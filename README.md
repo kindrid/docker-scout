@@ -9,12 +9,47 @@ You will probably want to keep an eye on the official container on [Docker Hub](
 
 Scout is server monitoring for the modern dev team: automatic monitoring of key metrics, 80+ plugins to monitor your apps, real-time (every second) streaming dashboards, and flexibile alerting.
 
-## Quick Start
+### Deploying with SystemD
 
+Make a unit file
 
-### 1. Create a unit file
+```
+### /etc/systemd/system/scout.service
+[Unit]
+Description=scout-agent
+After=docker.service
+Requires=docker.service
 
+[Service]
+TimeoutStartSec=0
+EnvironmentFile=/etc/environment
+EnvironmentFile=/etc/custom_environment
+ExecStartPre=-/usr/bin/docker kill scout-agent
+ExecStartPre=-/usr/bin/docker rm scout-agent
+ExecStart=/usr/bin/docker run --name scout-agent \
+    --net=host --privileged \
+    -v /proc:/host/proc:ro \
+    -v /etc/mtab:/host/etc/mtab:ro \
+    -v /var/run/docker.sock:/host/var/run/docker.sock:ro \
+    -e SCOUT_KEY=${SCOUT_KEY} \
+    -e SCOUT_ENVIRONMENT=${SCOUT_ENVIRONMENT} \
+    kindrid/docker-scout:latest
+```
 
+You can hard code your info by replacing
+
+Or you can pass it in via a text file of environment variables
+
+SCOUT_KEY=<REDACTED>
+SCOUT_ENVIRONMENT=production
+
+You can also use etcd, but see the fleet example (below) for that.
+
+```
+systemctl daemon-reload
+systemctl start scout
+docker ps
+```
 
 ### 2. Deploy it with SystemD
 
