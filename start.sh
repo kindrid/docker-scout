@@ -1,4 +1,3 @@
 #!/bin/bash
-scoutd --key=$SCOUT_KEY --environment=production --roles=applications config -o
 nohup /docker_events.rb &
-/usr/bin/scoutd start
+/usr/bin/scoutd --key=$SCOUT_KEY --environment=$SCOUT_ENVIRONMENT --logfile='-' start
