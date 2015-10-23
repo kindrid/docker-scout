@@ -11,10 +11,9 @@ Scout is server monitoring for the modern dev team: automatic monitoring of key 
 
 ### Deploying with SystemD
 
-Make a unit file
+Make a SystemD unit file, `/etc/systemd/system/scout.service`:
 
 ```
-### /etc/systemd/system/scout.service
 [Unit]
 Description=scout-agent
 After=docker.service
@@ -34,16 +33,25 @@ ExecStart=/usr/bin/docker run --name scout-agent \
     -e SCOUT_KEY=${SCOUT_KEY} \
     -e SCOUT_ENVIRONMENT=${SCOUT_ENVIRONMENT} \
     kindrid/docker-scout:latest
+
+[Install]
+WantedBy=multi-user.target
 ```
 
-You can hard code your info by replacing
+Then, you'll need to inject your scout environment and key. There are several ways.
 
-Or you can pass it in via a text file of environment variables
+You can hard code your info into the unit by replacing the interpolations (`${SCOUT_KEY}` and `${SCOUT_ENVIRONMENT}`) with your desired values.
 
+Or you can pass it in via a text file of environment variables. In this example unit we create such a file in `/etc/custom_environment`.
+
+```
 SCOUT_KEY=<REDACTED>
 SCOUT_ENVIRONMENT=production
+```
 
-You can also use etcd, but see the fleet example (below) for that.
+Your cloud provider may also provide ways to inject metadata into an instance. We do something like this using `etcd`, in the fleet example below.
+
+Finally, start the service:
 
 ```
 systemctl daemon-reload
