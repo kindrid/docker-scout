@@ -1,30 +1,68 @@
+
+[ScoutApp](https://scoutapp.com) offers nice monitoring, even on CoreOS. Thanks, ScoutApp, for some great tools and service!
+
+But we want to use environment variables instead of a yaml file to configure it more easily with our orchestration tools.
+
+You will probably want to keep an eye on the official container on [Docker Hub](https://hub.docker.com/r/scoutapp/docker-scout/) and its [GitHub](https://github.com/scoutapp/docker-scout) repository.
+
 ![scout logo](https://dl.dropboxusercontent.com/u/468982/docker_registry/scout_logo.png)
 
 Scout is server monitoring for the modern dev team: automatic monitoring of key metrics, 80+ plugins to monitor your apps, real-time (every second) streaming dashboards, and flexibile alerting.
 
-[Learn more](https://scoutapp.com).
+### Deploying with SystemD
 
-## Overview
+Make a SystemD unit file, `/etc/systemd/system/scout.service`:
 
-This a Docker container that runs the [Scout](https://scoutapp.com) monitoring agent, monitoring the host. Full help documentation is available on our [help site](http://help.scoutapp.com/v1.2/docs/docker).
+```
+[Unit]
+Description=scout-agent
+After=docker.service
+Requires=docker.service
 
-![docker screenshot](https://dl.dropboxusercontent.com/u/468982/plugin_urls/docker_screenshot.png)
+[Service]
+TimeoutStartSec=0
+EnvironmentFile=/etc/environment
+EnvironmentFile=/etc/custom_environment
+ExecStartPre=-/usr/bin/docker kill scout-agent
+ExecStartPre=-/usr/bin/docker rm scout-agent
+ExecStart=/usr/bin/docker run --name scout-agent \
+    --net=host --privileged \
+    -v /proc:/host/proc:ro \
+    -v /etc/mtab:/host/etc/mtab:ro \
+    -v /var/run/docker.sock:/host/var/run/docker.sock:ro \
+    -e SCOUT_KEY=${SCOUT_KEY} \
+    -e SCOUT_ENVIRONMENT=${SCOUT_ENVIRONMENT} \
+    kindrid/docker-scout:latest
 
-## Quick Start
+[Install]
+WantedBy=multi-user.target
+```
 
+Then, you'll need to inject your scout environment and key. There are several ways.
 
-### 1. Create a configuration file
+You can hard code your info into the unit by replacing the interpolations (`${SCOUT_KEY}` and `${SCOUT_ENVIRONMENT}`) with your desired values.
 
-Create a file called `scoutd.yml` (or copy our [template](https://github.com/scoutapp/docker-scout/blob/master/scoutd.yml)).
-__Your account_key is required__, all other values are optional.
-For a list of options, see our [scoutd help page](http://help.scoutapp.com/v1.2/docs/scoutd-beta#configuration).
+Or you can pass it in via a text file of environment variables. In this example unit we create such a file in `/etc/custom_environment`.
 
-    account_key: YOUR_SCOUT_ACCOUNT_KEY
+```
+SCOUT_KEY=<REDACTED>
+SCOUT_ENVIRONMENT=production
+```
 
-### 2. Run the docker image
+Your cloud provider may also provide ways to inject metadata into an instance. We do something like this using `etcd`, in the fleet example below.
+
+Finally, start the service:
+
+```
+systemctl daemon-reload
+systemctl start scout
+docker ps
+```
+
+### 2. Deploy it with SystemD
 
 Run the scout image, mounting the `scoutd.yml` file. Running the image will first download the image, if it is not already locally available.
-Run the following command in the directory containing your `scoutd.yml` file: 
+Run the following command in the directory containing your `scoutd.yml` file:
 
     docker run -d --name scout-agent \
 		-v /proc:/host/proc:ro \
@@ -34,29 +72,4 @@ Run the following command in the directory containing your `scoutd.yml` file:
 		--restart=always \
 		--net=host --privileged scoutapp/docker-scout
 
-### Reading host metrics
-
-We want to look at resources on this host, not this container.
-
-The `server_metrics` Ruby gem used by the scout agent primarily looks at the `/proc` directory, but, if available, will instead read from `/host/proc`, which is expected to be shared from the host when running the container (see the above command sample).
-
-The `server_metrics` gem will also default to reading from `/host/etc/mtab` (also mounted above), if it exists, to determine the drives mounted on the host. It will recognize theses hosts inside the container if they are mounted by UUID (`/dev/disk/by-uuid/XXXXX`).
-
-The `--net=host` flag will allow gathering network metrics from the host.
-
-The `--privileged` flag will allow gathering the disk capacity metrics from the host.
-
-### scoutd config options
-
-Any option may be set in the provided scoutd.yml file. This file must be world-readable and mounted to `/etc/scout/scoutd.yml` (see above command).
-For a list of options, see our [scoutd help page](http://help.scoutapp.com/v1.2/docs/scoutd-beta#configuration).
-
-## Monitoring Docker Containers
-
-Monitor the resource usage of your running containers with our [__Docker Monitoring Plugin__](https://scoutapp.com/plugin_urls/19761-docker-monitoring). 
-
-The plugin requires reading from `/host/sys/fs/cgroup` (mounted above). This mounting is unnecessary if the docker plugin will not be in use. 
-
-## Questions? Using Docker?
-
-Shoot us an email at support@scoutapp.com or [open an issue](https://github.com/scoutapp/docker-scout/issues). Full help documentation is available on our [help site](http://help.scoutapp.com/v1.2/docs/docker).
+### 3. Or FleetD
